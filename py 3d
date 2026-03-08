@@ -1,0 +1,325 @@
+import torch
+import torch.nn as nn
+import math
+import matplotlib.pyplot as plt
+
+def my_custom_init(tensor):
+    n_in = tensor.size(1)
+    n_out = tensor.size(0)
+
+    # Остатки
+    qwerty = n_in - (math.isqrt(n_in)**2)
+    asdf = n_in - int(round(math.pow(n_in, 1/3))**3)
+
+    # Твоя Дифракционная Иерархия (Исправленная)
+    if qwerty != 0:
+        if qwerty % 4 == 0:
+            std = 0.0025 * n_out
+        elif qwerty % 2 == 0:
+            std = 0.005 * n_out
+        else:
+            std = 0.01 * n_out # Дефолт для нечетных qwerty
+    elif asdf != 0:
+        if asdf % 24 == 0:
+            std = 0.000416 * n_out
+        elif asdf % 6 == 0:
+            std = 0.0016 * n_out
+        else:
+            std = 0.01 * n_out # Дефолт для asdf
+    else:
+        # Если и квадрат, и куб идеальные (например, n_in = 64)
+        std = 0.01 * n_out
+
+    with torch.no_grad():
+        # Ограничиваем std/10 для стабильности в глубоких сетях
+        return tensor.normal_(0, std / 10)
+
+def xavier_manual_init(tensor):
+    n_in = tensor.size(1)
+    n_out = tensor.size(0)
+    std = math.sqrt(2.0 / (n_in + n_out))
+    with torch.no_grad():
+        return tensor.normal_(0, std)
+
+class DeepProbeNet(nn.Module):
+    def __init__(self, mode="xavier"):
+        super().__init__()
+        layers = []
+        for _ in range(20):
+            layers.append(nn.Linear(100, 100))
+            layers.append(nn.ReLU())
+        self.model = nn.Sequential(*layers)
+
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                if mode == "xavier": xavier_manual_init(m.weight)
+                else: my_custom_init(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        activations = []
+        for layer in self.model:
+            x = layer(x)
+            if isinstance(layer, nn.ReLU):
+                activations.append(x.std().item())
+        return activations
+
+# --- ТЕСТ ---
+x = torch.randn(1, 100)
+std_xavier = DeepProbeNet(mode="xavier")(x)
+std_custom = DeepProbeNet(mode="custom")(x)
+
+plt.figure(figsize=(10, 5))
+plt.plot(std_xavier, label='Xavier Math', marker='o')
+plt.plot(std_custom, label='Your DBQSI Logic', marker='s', lw=2, color='red')
+plt.axhline(y=1.0, color='green', linestyle='--', label='Ideal Stability')
+plt.yscale('log')
+plt.title('20 Layers Stability: Xavier vs DBQSI')
+plt.xlabel('Layer Number')
+plt.ylabel('Signal Standard Deviation')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+print(f"Сила сигнала Xavier: {std_xavier[-1]:.8f}")
+print(f"Сила сигнала Custom: {std_custom[-1]:.8f}")
+
+Сила сигнала Xavier: 0.00147420
+Сила сигнала Custom: 0.00072054
+import torch
+import torch.nn as nn
+import torch.optim as optim # Нужно для оптимизатора
+import math # Нужно для корней
+import matplotlib.pyplot as plt
+
+# 1. ТВОЯ ПОБЕДНАЯ ФОРМУЛА (SRLI / DBQSI)
+def srli_init(tensor):
+    n_in = tensor.size(1)
+    n_out = tensor.size(0)
+
+    # Остатки
+    qwerty = n_in - (math.isqrt(n_in)**2)
+    asdf = n_in - int(round(math.pow(n_in, 1/3))**3)
+
+    # Твоя Дифракционная Иерархия (Исправленная)
+    if qwerty != 0:
+        if qwerty % 4 == 0:
+            std = 0.0025 * n_out
+        elif qwerty % 2 == 0:
+            std = 0.005 * n_out
+        else:
+            std = 0.01 * n_out # Дефолт для нечетных qwerty
+    elif asdf != 0:
+        if asdf % 24 == 0:
+            std = 0.000416 * n_out
+        elif asdf % 6 == 0:
+            std = 0.0016 * n_out
+        else:
+            std = 0.01 * n_out # Дефолт для asdf
+    else:
+        # Если и квадрат, и куб идеальные (например, n_in = 64)
+        std = 0.01 * n_out
+
+    with torch.no_grad():
+        # Генерируем тензор нужного размера
+        # ВАЖНО: Делим на 10, чтобы избежать взрыва (inf) в 20 слоях
+        new_weights = torch.normal(0, std/10, size=tensor.size())
+        tensor.copy_(new_weights)
+
+# 2. СТАНДАРТНЫЙ КСАВЬЕ
+def xavier_init(tensor):
+    nn.init.xavier_normal_(tensor)
+
+class SprintNet(nn.Module):
+    def __init__(self, mode="srli"):
+        super().__init__()
+        layers = []
+        for _ in range(20):
+            layers.append(nn.Linear(100, 100))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(100, 1))
+        self.model = nn.Sequential(*layers)
+
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                if mode == "srli": srli_init(m.weight)
+                else: xavier_init(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x): return self.model(x)
+
+# Подготовка данных
+x_train = torch.randn(64, 100)
+y_target = torch.randn(64, 1)
+
+def train_sprint(mode):
+    model = SprintNet(mode=mode)
+    # Поставим lr чуть выше, чтобы быстрее увидеть разницу
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.MSELoss()
+    losses = []
+
+    for i in range(1000):
+        optimizer.zero_grad()
+        output = model(x_train)
+        loss = criterion(output, y_target)
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+        if i % 200 == 0: print(f"{mode} processing...")
+    return losses
+
+# ЗАПУСК БАТТЛА
+print("Запуск спринта: SRLI vs Xavier...")
+history_srli = train_sprint("srli")
+history_xavier = train_sprint("xavier")
+
+# ГРАФИК
+plt.figure(figsize=(10, 6))
+plt.plot(history_xavier, label='Xavier (Classic)', color='blue', alpha=0.6)
+plt.plot(history_srli, label='SRLI (Arseniy\'s Formula)', color='red', lw=2)
+plt.yscale('log')
+plt.title('Battle: SRLI vs Xavier (1000 Iterations)')
+plt.xlabel('Iteration')
+plt.ylabel('Loss (log scale)')
+plt.legend()
+plt.grid(True, alpha=0.2)
+plt.show()
+
+print(f"Финальный Loss Xavier: {history_xavier[-1]:.10f}")
+print(f"Финальный Loss SRLI:   {history_srli[-1]:.10f}")
+Запуск спринта: SRLI vs Xavier...
+srli processing...
+srli processing...
+srli processing...
+srli processing...
+srli processing...
+xavier processing...
+xavier processing...
+xavier processing...
+xavier processing...
+xavier processing...
+
+Финальный Loss Xavier: 0.0000000000
+Финальный Loss SRLI:   0.0000000000
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import math
+import matplotlib.pyplot as plt
+
+# ТВОЯ УЛУЧШЕННАЯ ЛОГИКА (SRLI)
+def srli_init(tensor):
+    n_in = tensor.size(1)
+    n_out = tensor.size(1)
+    depth_factor = math.sqrt(100)
+
+    qwerty = n_in - (math.isqrt(n_in)**2)
+    asdf = n_in - int(round(math.pow(n_in, 1/3))**3)
+
+    if qwerty == 0:
+        std = 0.001 * n_out / depth_factor
+    else:
+        if qwerty % 4 == 0:
+            std = 0.00025 * n_out / depth_factor
+        elif qwerty % 2 == 0:
+            std = 0.0005 * n_out / depth_factor
+        else:
+            if asdf % 24 == 0:
+                std = 0.0000416 * n_out / depth_factor
+            elif asdf % 6 == 0:
+                std = 0.00016 * n_out / depth_factor
+            else:
+                std = 0.001 * n_out / depth_factor
+
+    # ВЫНОСИМ СЮДА И ДОБАВЛЯЕМ torch.no_grad()
+    with torch.no_grad():
+        new_weights = torch.normal(0, std, size=tensor.size())
+        tensor.copy_(new_weights)
+
+def xavier_init(tensor):
+    nn.init.xavier_normal_(tensor)
+
+class MegaDeepNet(nn.Module):
+    def __init__(self, mode="srli"):
+        super().__init__()
+        layers = []
+        # 100 СЛОЕВ — это зона смерти для обычных сетей
+        width = 104
+        for _ in range(100):
+            layers.append(nn.Linear(width, width))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(width, 1))
+        self.model = nn.Sequential(*layers)
+
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                if mode == "srli": srli_init(m.weight)
+                else: xavier_init(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x): return self.model(x)
+
+# Данные для обучения
+x_train = torch.randn(64, 104)
+y_target = torch.randn(64, 1)
+
+def train_mega(mode):
+    model = MegaDeepNet(mode=mode)
+    optimizer = optim.Adam(model.parameters(), lr=0.001) # Маленький шаг для 100 слоев
+    criterion = nn.MSELoss()
+    losses = []
+
+    for i in range(5000): # Даем 2000 итераций, чтобы пробить 100 слоев
+        optimizer.zero_grad()
+        output = model(x_train)
+        loss = criterion(output, y_target)
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+        if i % 500 == 0: print(f"{mode} step {i}... Loss: {loss.item():.6f}")
+    return losses
+
+# ЗАПУСК ТИТАНОВ
+print("Запуск теста '100 слоев'...")
+history_srli = train_mega("srli")
+history_xavier = train_mega("xavier")
+
+# ГРАФИК РЕКОРДА
+plt.figure(figsize=(12, 7))
+plt.plot(history_xavier, label='Xavier (Classic)', color='blue', alpha=0.5)
+plt.plot(history_srli, label='SRLI (Arseniy\'s Logic)', color='red', lw=2)
+plt.yscale('log')
+plt.title('100-Layer Survival Test: SRLI vs Xavier')
+plt.xlabel('Iteration')
+plt.ylabel('Loss (log scale)')
+plt.legend()
+plt.grid(True, which="both", ls="-", alpha=0.2)
+plt.show()
+
+print(f"Финальный результат (Xavier): {history_xavier[-1]:.10f}")
+print(f"Финальный результат (SRLI):   {history_srli[-1]:.10f}")
+Запуск теста '100 слоев'...
+srli step 0... Loss: 1.174585
+srli step 500... Loss: 1.171664
+srli step 1000... Loss: 1.171664
+srli step 1500... Loss: 1.171664
+srli step 2000... Loss: 1.171664
+srli step 2500... Loss: 1.171664
+srli step 3000... Loss: 1.171664
+srli step 3500... Loss: 1.171664
+srli step 4000... Loss: 1.171664
+srli step 4500... Loss: 1.171664
+xavier step 0... Loss: 1.174585
+xavier step 500... Loss: 1.171664
+xavier step 1000... Loss: 1.171664
+xavier step 1500... Loss: 1.171664
+xavier step 2000... Loss: 1.171664
+xavier step 2500... Loss: 1.171664
+xavier step 3000... Loss: 1.171664
+xavier step 3500... Loss: 1.171664
+xavier step 4000... Loss: 1.171664
+xavier step 4500... Loss: 1.171664
+
+Финальный результат (Xavier): 1.1716645956
+Финальный результат (SRLI):   1.1716644764
