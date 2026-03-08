@@ -1,0 +1,89 @@
+import torch
+import torch.nn as nn
+
+import matplotlib.pyplot as plt
+
+# 1. ТВОЯ ПОБЕДНАЯ ФОРМУЛА (SRLI)
+def srli_init(tensor):
+    n_in = tensor.size(1)
+    n_out = tensor.size(0)
+    with torch.no_grad():
+       qwerty = n_in*n_out - (math.isqrt(n_in)**2)*(math.isqrt(n_out)**2)
+
+       # Твоя логика условий
+       if qwerty == 0:
+          std = 0.001*n_out # Уменьшил, чтобы не взрывалось
+       else:
+           # Проверка на четность и кратность 4
+           if qwerty % 2 == 0:
+               if qwerty % 4 == 0:
+                   std = 0.0025*n_out
+               else:
+                   std = 0.005*n_out
+           else:
+               # Вместо 1 ставим что-то разумное, например 0.1
+               std = 0.001*n_out
+
+       # ВАЖНО: генерируем тензор нужного размера (tensor.size())
+       new_weights = torch.normal(0, std, size=tensor.size())
+       tensor.copy_(new_weights)
+
+# 2. СТАНДАРТНЫЙ КСАВЬЕ
+def xavier_init(tensor):
+    nn.init.xavier_normal_(tensor)
+
+class SprintNet(nn.Module):
+    def __init__(self, mode="srli"):
+        super().__init__()
+        layers = []
+        for _ in range(20): # 20 слоев — жесткая проверка
+            layers.append(nn.Linear(100, 100))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(100, 1))
+        self.model = nn.Sequential(*layers)
+
+        for m in self.model:
+            if isinstance(m, nn.Linear):
+                if mode == "srli": srli_init(m.weight)
+                else: xavier_init(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x): return self.model(x)
+
+# Подготовка данных
+x_train = torch.randn(64, 100)
+y_target = torch.randn(64, 1)
+
+def train_sprint(mode):
+    model = SprintNet(mode=mode)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    criterion = nn.MSELoss()
+    losses = []
+
+    for _ in range(1000): # 200 быстрых шагов
+        optimizer.zero_grad()
+        loss = criterion(model(x_train), y_target)
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+    return losses
+
+# ЗАПУСК БАТТЛА
+print("Запуск спринта: SRLI vs Xavier...")
+history_srli = train_sprint("srli")
+history_xavier = train_sprint("xavier")
+
+# ГРАФИК
+plt.figure(figsize=(10, 6))
+plt.plot(history_xavier, label='Xavier (Classic)', color='blue', alpha=0.6)
+plt.plot(history_srli, label='SRLI (Arseniy\'s Formula)', color='red', lw=2)
+plt.yscale('log')
+plt.title('Speed of Learning: 20-Layer Deep Net')
+plt.xlabel('Iteration')
+plt.ylabel('Loss (log scale)')
+plt.legend()
+plt.grid(True, alpha=0.2)
+plt.show()
+
+print(f"Финальный Loss Xavier: {history_xavier[-1]:.6f}")
+print(f"Финальный Loss SRLI:   {history_srli[-1]:.6f}")
